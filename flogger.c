@@ -5,12 +5,13 @@
 #include <linux/cdev.h>
 #include <linux/fs.h>
 #include <linux/mutex.h>
+#include <linux/uaccess.h>
 
 
 #define DEVICE_NAME "flogger"
 
 #define BUFFER_SIZE 1024 * 1024
-#define MAX_CON_COUNT 1
+#define MAX_CON_COUNT 3
 
 #define USED (1)
 #define UNUSED (0)
@@ -80,13 +81,34 @@ static int flogger_release(struct inode * node, struct file * file)
 static ssize_t flogger_read(struct file * file, char __user * buf,
                       size_t count, loff_t * pos)
 {
-    return 0;
+    int len;
+    struct logger_dev * ld = file->private_data;
+
+    len = ld->logger->pos - ld->offset;
+    
+    if (len <=0) {
+        return 0;
+    }
+    printk("====== %d %d  %d\n", len,  ld->logger->pos,  ld->offset);
+    copy_to_user(buf, &ld->logger->buf[ld->offset], len);
+    ld->offset += len;
+    return len;
 }
 
 static ssize_t flogger_write(struct file * file, char __user * buf,
                       size_t count, loff_t * pos)
 {
-    return 0;
+    int len;
+    int c;
+    mutex_lock(&g_logger->w_lock);
+    printk("===== get lock\n");
+    len = BUFFER_SIZE - g_logger->pos;
+    len = len > count? count : len;
+    c = copy_from_user(&g_logger->buf[g_logger->pos], buf, len);
+    g_logger->pos += len;
+    printk("write %d   %d   %d\n", len, c, g_logger->pos);
+    mutex_unlock(&g_logger->w_lock);
+    return len;
 }
 
 
